@@ -1,0 +1,219 @@
+name: Lambda - Build Dockerized Lambda
+
+run-name: >
+  ${{ github.event_name == 'pull_request' && github.event.pull_request.merged == true &&
+      format('Build and deploy for PR: {0} by user: {1}',  
+        github.event.pull_request.title,
+        github.actor
+      )
+    || github.event_name == 'pull_request' &&
+      format('Build for PR: {0} by user: {1}', 
+        github.event.pull_request.title, 
+        github.event.pull_request.user.login
+      )
+  }}
+
+on:
+  workflow_dispatch:
+      functions:
+        type: string
+        required: false
+        description: List of functions
+
+  pull_request:
+    types: [synchronize, opened, closed]
+    branches:
+      - main
+    paths:
+      - "functions/get-groups/**"
+
+jobs:
+  ############################################################################################
+  # Job: Add trigger information
+  ############################################################################################
+  trigger-info:
+    name: Trigger information
+    runs-on: ubuntu-latest
+    steps:
+      - name: Info
+        run: |
+          branch_ref=${{ github.head_ref || github.event.ref }}
+          branch_name=${branch_ref#refs/heads/}
+          avatar_url=${{ github.event.sender.avatar_url }}
+          actual_url="https://avatars.githubusercontent.com/u/${avatar_url:40:100}"
+
+          echo "### BUILD INFO :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY # this is a blank line
+          echo "- **Deployer** - <img src='${actual_url}' width="20"> ${{ github.actor }} :technologist:" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch name** - $branch_name" :octocat: >> $GITHUB_STEP_SUMMARY
+
+  ############################################################################################
+  # Job: Set functions and environment variables
+  ############################################################################################
+  set-vars:
+    name: Set functions and environment variables
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect changes
+        id: detect-changes
+        uses: dorny/paths-filter@v3
+        with:
+          base: ${{ github.base_ref }}
+          filters: |
+            get-groups:
+              - 'functions/get-groups/**'
+
+      - name: Set function(s) to build
+        id: set-functions-to-build
+        run: |
+          if ${{ github.event_name == 'workflow_dispatch' }}; then
+            input_functions=$(echo ${{ github.event.inputs.functions }})
+            FUNCTIONS=$( jq -nc --arg input_functions "$input_functions" '$input_functions | split(",")' )
+          else
+            FUNCTIONS=${{ toJson(steps.detect-changes.outputs.changes) }}
+          fi
+
+          echo "Changes are in the functions: $FUNCTIONS"
+          echo "functions_to_build=${FUNCTIONS}" >> $GITHUB_OUTPUT
+
+    outputs:
+      functions: ${{ steps.set-functions-to-build.outputs.functions_to_build }}
+
+  ############################################################################################
+  # Job: Build and push images to ECR
+  ############################################################################################
+  build-and-push-to-ecr:
+    name: Build docker image
+    runs-on: ubuntu-latest
+    needs:
+      - set-vars
+    if: needs.set-vars.outputs.functions != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        function: ${{ fromJson(needs.set-vars.outputs.functions) }}
+    defaults:
+      run:
+        working-directory: functions/${{matrix.function}}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup semver bash
+        run: |
+          sudo curl https://raw.githubusercontent.com/fsaintjacques/semver-tool/3.0.0/src/semver -o /usr/local/bin/semver && sudo chmod +x /usr/local/bin/semver
+          semver --version
+
+      - name: Get version
+        id: get-version
+        run: |
+          function=${{ matrix.function }}
+          git fetch --tags -q
+          last_version=$(git tag --sort=-version:refname | grep -P "^$function@\d+.\d+.\d+$" | head -n 1 | cut -d @ -f 2)
+
+          if [ -z "$last_version" ]; then
+            new_version=1.0.0
+          else
+            new_version=$(semver bump patch "$last_version")
+          fi
+
+          echo "image_name=$image_name"
+          echo "last_version=$last_version"
+          echo "new_version=$new_version"
+          echo "new_version=$new_version" >> $GITHUB_OUTPUT
+
+      - name: Prepare artifact for workflow dispatch
+        id: prep-wd
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          WD_BUILD_NUM=$(echo $GITHUB_RUN_NUMBER)
+          WD_BUILD_ID=$(echo $GITHUB_SHA | head -c7)
+          SANITIZED_BRANCH_NAME=$(echo ${{ github.ref_name }} | sed 's/\//-/g')
+          WD_VERSION=${RELEASE_VERSION}-wd-${SANITIZED_BRANCH_NAME}-${WD_BUILD_NUM}-${WD_BUILD_ID}
+          echo "wd_version=${WD_VERSION}" >> $GITHUB_OUTPUT
+        env:
+          RELEASE_VERSION: ${{ steps.get-version.outputs.new_version }}
+
+      - name: Prepare artifact for pull request
+        id: prep-pr
+        if: github.event_name != 'workflow_dispatch'
+        run: |
+          PR_BUILD_NUM=$(echo $GITHUB_RUN_NUMBER)
+          PR_BUILD_ID=$(echo $GITHUB_SHA | head -c7)
+
+          if ${{ github.event.pull_request.merged && github.base_ref == 'main' }}; then
+            PR_VERSION=${RELEASE_VERSION}
+          elif ${{ github.event.pull_request.merged }}; then
+            SANITIZED_BRANCH_NAME=$(echo ${{ github.ref_name }} | sed 's/\//-/g')
+            PR_VERSION=${RELEASE_VERSION}-${SANITIZED_BRANCH_NAME}-${PR_BUILD_NUM}-${PR_BUILD_ID}
+          else
+            PR_VERSION=${RELEASE_VERSION}-pr-${{ github.event.number }}-${PR_BUILD_NUM}-${PR_BUILD_ID}
+          fi
+
+          echo "pr_version=${PR_VERSION}" >> $GITHUB_OUTPUT
+        env:
+          RELEASE_VERSION: ${{ steps.get-version.outputs.new_version }}
+
+      - name: Prepare artifact
+        id: prep
+        run: |
+          if ${{ github.event_name == 'workflow_dispatch' }}; then
+            VERSION=${{ steps.prep-wd.outputs.wd_version }}
+            echo "version=${VERSION}" >> $GITHUB_OUTPUT
+            echo "github_release_version=${FUNCTION}@${VERSION}" >> $GITHUB_OUTPUT
+          else
+            VERSION=${{ steps.prep-pr.outputs.pr_version }}
+            echo "version=${VERSION}" >> $GITHUB_OUTPUT
+            echo "github_release_version=${FUNCTION}@${VERSION}" >> $GITHUB_OUTPUT
+          fi
+        env:
+          FUNCTION: ${{ matrix.function }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: us-east-1
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          # role-to-assume: ${{ vars.CICD_ROLE_ARN }}
+          role-skip-session-tagging: true
+          role-duration-seconds: 3600
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and tag image to push to Amazon ECR
+        run: |
+          docker build --target=main -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        env:
+          IMAGE_TAG: ${{ steps.prep.outputs.version }}
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ matrix.function }}
+
+      - name: Delete image with the latest tag
+        if: github.event.pull_request.merged
+        run: |
+          IMAGE_IDS='[{"imageTag": "latest"}]'
+
+          echo "Deleting images with latest tag: $IMAGE_IDS"
+          aws ecr batch-delete-image --repository-name ${ECR_REPOSITORY} --image-ids $IMAGE_IDS || echo "Some tags may not exist, skipping errors"
+        env:
+          ECR_REPOSITORY: ${{ matrix.function }}
+
+      - name: Tag the built image as latest and push to ECR
+        if: github.event.pull_request.merged
+        run: |
+            docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+            docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+            echo "Pushed $ECR_REPOSITORY:latest to ECR"
+        env:
+          IMAGE_TAG: ${{ steps.prep.outputs.version }}
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ matrix.function }}
+

@@ -1,0 +1,67 @@
+user_search_attributes = [
+            "cn",
+            "displayName",
+            "distinguishedName",
+            "givenName",
+            "mail",
+            "memberOf",
+            "name",
+            "objectCategory",
+            "objectGUID",
+            "pwdLastSet",
+            "sAMAccountName",
+            "sn",
+            "userPrincipalName",
+            "whenCreated",
+            "objectClass",
+            "whenChanged"
+        ]
+
+group_search_attributes=[
+    "cn",
+    "distinguishedName",
+    "name",
+    "objectCategory",
+    "objectGUID",
+    "objectSid",
+    "description",
+    "member",
+    "objectClass",
+    "sAMAccountName",
+    "whenCreated",
+    "whenChanged"
+]
+
+user_search_attributes = [
+            "cn",
+            "displayName",
+            "distinguishedName",
+            "givenName",
+            "mail",
+            "memberOf",
+            "name",
+            "objectCategory",
+            "objectGUID",
+            "pwdLastSet",
+            "sAMAccountName",
+            "sn",
+            "userPrincipalName",
+            "whenCreated",
+            "objectClass",
+            "whenChanged"
+        ]
+
+group_search_attributes=[
+    "cn",
+    "distinguishedName",
+    "name",
+    "objectCategory",
+    "objectGUID",
+    "objectSid",
+    "description",
+    "member",
+    "objectClass",
+    "sAMAccountName",
+    "whenCreated",
+    "whenChanged"
+]
