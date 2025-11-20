@@ -9,11 +9,9 @@ LeapAD is a modern, serverless web application designed to streamline Active Dir
 
 ## Challenges Faced Before LeapAD Was Introduced:
 - Manual Active Directory (AD) management was time-consuming and error-prone.
-- Administrators struggled with complex LDAP commands and scripts.
+- User Interface was not user-friendly, making navigation and management cumbersome.
 - Lack of a centralized interface made tracking users and groups difficult.
 - Onboarding and offboarding processes were slow and inconsistent.
-- Limited visibility and reporting on AD changes led to compliance risks.
-- Collaboration between IT teams was fragmented and inefficient.
 - Reliance on third-party solutions like Okta was expensive, increasing operational costs.
 
 ## Architecture
