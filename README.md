@@ -7,7 +7,7 @@ A full-stack web application for managing Active Directory users and groups thro
 **LeapAD – Simplifying Active Directory Management**
 LeapAD is a modern, serverless web application designed to streamline Active Directory (AD) administration through an intuitive and secure interface. Built with React, Flask, and LDAP3, it eliminates the need for costly third-party tools like Okta by offering seamless AD integration, near-zero infrastructure management, and robust cloud-based performance. With features such as user and group management, role-based access, and planned enhancements like AD auditing and multi-domain support, LeapAD empowers organizations to manage their directories efficiently and cost-effectively
 
-## Challenges Faced Before LEAPAD Introduce:
+## Challenges Faced Before LeapAD Was Introduced:
 - Manual Active Directory (AD) management was time-consuming and error-prone.
 - Administrators struggled with complex LDAP commands and scripts.
 - Lack of a centralized interface made tracking users and groups difficult.
